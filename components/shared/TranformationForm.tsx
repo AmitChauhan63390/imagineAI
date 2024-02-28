@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from 'react'
+import React, { useState, useTransition } from 'react'
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 
@@ -27,9 +27,11 @@ import {
 } from "@/components/ui/select"
 
 import { Input } from "@/components/ui/input"
-import { aspectRatioOptions, defaultValues, transformationTypes } from '@/constants'
+import { aspectRatioOptions, creditFee, defaultValues, transformationTypes } from '@/constants'
 import { CustomField } from './CustomField'
-import { AspectRatioKey } from '@/lib/utils'
+import { AspectRatioKey, debounce, deepMergeObjects } from '@/lib/utils'
+import { updateCredits } from '@/lib/actions/user.actions'
+import MediaUploader from './MediaUploader'
 
 export const formSchema = z.object({
     title: z.string(),
@@ -50,6 +52,7 @@ const TranformationForm = ({ action, data = null, userId, creditBalance, type, c
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [istransforming, setIsTransforming] = useState(false);
     const [transformationCongif, setTransformationConfig] = useState(config)
+    const [isPending, startTransition] = useTransition();
 
     const initialValues = data && action === 'Update' ? {
         title: data?.title,
@@ -67,21 +70,50 @@ const TranformationForm = ({ action, data = null, userId, creditBalance, type, c
 
     // 2. Define a submit handler.
     function onSubmit(values: z.infer<typeof formSchema>) {
-        // Do something with the form values.
-        // ✅ This will be type-safe and validated.
         console.log(values)
     }
 
     const onSelectFieldHandler = (value: string, onChangeField: (value: string) => void) => {
+        const imageSize = aspectRatioOptions[value as AspectRatioKey]
+
+        setImage((prevState: any) => ({
+            ...prevState,
+            aspectRatio: imageSize.aspectRatio,
+            width: imageSize.width,
+            height: imageSize.height,
+
+
+        }))
+        setNewTrasnformation(transformationType.config);
+        return onChangeField(value)
 
 
     }
 
     const onInputChangeHandler = (fieldName: string, value: string, type: string, onChangeField: (value: string) => void) => {
+        debounce(() => {
+            setNewTrasnformation((prevState: any) => ({
+                ...prevState,
+                [type]: {
+                    ...prevState?.[type],
+                    [fieldName === 'prompt' ? 'prompt' : 'to']: value
+                }
+            }))
+
+        }, 1000)
+
 
     }
 
-    const onTransformHandler = ()=>{}
+    const onTransformHandler = () => {
+        setIsTransforming(true)
+        setTransformationConfig(deepMergeObjects(newTransformation, transformationCongif))
+        setNewTrasnformation(null)
+        startTransition(async () => {
+            // await updateCredits(userId,creditFee)
+        })
+
+    }
 
     return (
         <Form {...form}>
@@ -163,17 +195,28 @@ const TranformationForm = ({ action, data = null, userId, creditBalance, type, c
                         )}
                     </div>
                 )}
+                <div className='media-uploader-field'>
+                    <CustomField
+                    control={form.control}
+                    name="publicId"
+                    className='flex size-full flex-col'
+                    render={({field})=>(
+                       <MediaUploader
+                       onValueChange={field.onChange}
+                       setImage={setImage}
+                       publicId={field.value}
+                       image={image}
+                       type={type}/> 
+                    )}/>
+                </div>
                 <div className='flex flex-col gap-4'>
                     <Button type='button' className='submit-button capitalize'
                         disabled={istransforming || newTransformation === null}
-                        onClick={onTransformHandler}>{istransforming?'Transforming...':'Apply transformation'}</Button>
+                        onClick={onTransformHandler}>{istransforming ? 'Transforming...' : 'Apply transformation'}</Button>
                     <Button type='submit' className='submit-button capitalize'
-                        disabled={isSubmitting}>{isSubmitting?'Submitting':'Save'}</Button>
+                        disabled={isSubmitting}>{isSubmitting ? 'Submitting' : 'Save'}</Button>
 
                 </div>
-
-
-
             </form>
         </Form>
     )
